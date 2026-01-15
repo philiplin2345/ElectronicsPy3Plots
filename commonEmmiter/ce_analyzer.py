@@ -28,6 +28,9 @@ class CommonEmitterAnalyzer:
         self.VT = 0.026      # Thermal voltage at room temp (V)
         self.VBE = 0.7       # Base-emitter voltage (V)
         
+        # Selected frequency for detailed calculations
+        self.selected_freq = 1000  # Default to 1 kHz
+        
         # Create figure and subplots
         self.setup_figure()
         self.create_sliders()
@@ -35,12 +38,12 @@ class CommonEmitterAnalyzer:
         
     def setup_figure(self):
         """Setup the main figure with subplots"""
-        self.fig = plt.figure(figsize=(16, 10))
+        self.fig = plt.figure(figsize=(20, 12))
         self.fig.suptitle('Common Emitter Amplifier Analyzer', fontsize=16, fontweight='bold')
         
-        # Create grid for subplots
-        gs = self.fig.add_gridspec(3, 2, left=0.05, right=0.95, top=0.92, bottom=0.35,
-                                   hspace=0.3, wspace=0.3)
+        # Create grid for subplots - adjusted for formula display
+        gs = self.fig.add_gridspec(3, 3, left=0.05, right=0.98, top=0.92, bottom=0.28,
+                                   hspace=0.3, wspace=0.4)
         
         # Circuit schematic (left side, spans 2 rows)
         self.ax_circuit = self.fig.add_subplot(gs[0:2, 0])
@@ -62,11 +65,16 @@ class CommonEmitterAnalyzer:
         self.ax_current.set_ylabel('Current Gain (dB)')
         self.ax_current.grid(True, alpha=0.3)
         
-        self.ax_power = self.fig.add_subplot(gs[2, :])
+        self.ax_power = self.fig.add_subplot(gs[2, 0:2])
         self.ax_power.set_title('Power Gain vs Frequency', fontweight='bold')
         self.ax_power.set_xlabel('Frequency (Hz)')
         self.ax_power.set_ylabel('Power Gain (dB)')
         self.ax_power.grid(True, alpha=0.3)
+        
+        # Formula display panel (right side, spans all rows)
+        self.ax_formulas = self.fig.add_subplot(gs[0:3, 2])
+        self.ax_formulas.set_title('Calculations at Selected Frequency', fontweight='bold', fontsize=11)
+        self.ax_formulas.axis('off')
         
     def create_sliders(self):
         """Create interactive sliders for component values"""
@@ -80,17 +88,20 @@ class CommonEmitterAnalyzer:
         far_right_col = 0.68
         
         # Create slider axes
-        ax_RC = plt.axes([left_col, 0.22, slider_width, slider_height], facecolor=slider_color)
-        ax_RB = plt.axes([left_col, 0.18, slider_width, slider_height], facecolor=slider_color)
-        ax_RE = plt.axes([left_col, 0.14, slider_width, slider_height], facecolor=slider_color)
-        ax_RL = plt.axes([left_col, 0.10, slider_width, slider_height], facecolor=slider_color)
+        ax_RC = plt.axes([left_col, 0.20, slider_width, slider_height], facecolor=slider_color)
+        ax_RB = plt.axes([left_col, 0.16, slider_width, slider_height], facecolor=slider_color)
+        ax_RE = plt.axes([left_col, 0.12, slider_width, slider_height], facecolor=slider_color)
+        ax_RL = plt.axes([left_col, 0.08, slider_width, slider_height], facecolor=slider_color)
         
-        ax_VCC = plt.axes([right_col, 0.22, slider_width, slider_height], facecolor=slider_color)
-        ax_beta = plt.axes([right_col, 0.18, slider_width, slider_height], facecolor=slider_color)
+        ax_VCC = plt.axes([right_col, 0.20, slider_width, slider_height], facecolor=slider_color)
+        ax_beta = plt.axes([right_col, 0.16, slider_width, slider_height], facecolor=slider_color)
         
-        ax_Cin = plt.axes([far_right_col, 0.22, slider_width, slider_height], facecolor=slider_color)
-        ax_Cout = plt.axes([far_right_col, 0.18, slider_width, slider_height], facecolor=slider_color)
-        ax_CE = plt.axes([far_right_col, 0.14, slider_width, slider_height], facecolor=slider_color)
+        ax_Cin = plt.axes([far_right_col, 0.20, slider_width, slider_height], facecolor=slider_color)
+        ax_Cout = plt.axes([far_right_col, 0.16, slider_width, slider_height], facecolor=slider_color)
+        ax_CE = plt.axes([far_right_col, 0.12, slider_width, slider_height], facecolor=slider_color)
+        
+        # Frequency slider (log scale)
+        ax_freq = plt.axes([left_col, 0.04, slider_width * 2.5, slider_height], facecolor='lightcoral')
         
         # Create sliders
         self.slider_RC = Slider(ax_RC, 'RC (kΩ)', 1.0, 10.0, valinit=self.RC/1e3, valstep=0.1)
@@ -105,6 +116,9 @@ class CommonEmitterAnalyzer:
         self.slider_Cout = Slider(ax_Cout, 'Cout (μF)', 0.1, 100.0, valinit=self.Cout*1e6, valstep=0.1)
         self.slider_CE = Slider(ax_CE, 'CE (μF)', 1.0, 1000.0, valinit=self.CE*1e6, valstep=10.0)
         
+        # Frequency slider (logarithmic scale from 1 Hz to 1 MHz)
+        self.slider_freq = Slider(ax_freq, 'Frequency (Hz)', 0, 6, valinit=3, valstep=0.01)
+        
         # Connect sliders to update function
         self.slider_RC.on_changed(self.update_plots)
         self.slider_RB1.on_changed(self.update_plots)
@@ -115,6 +129,8 @@ class CommonEmitterAnalyzer:
         self.slider_Cin.on_changed(self.update_plots)
         self.slider_Cout.on_changed(self.update_plots)
         self.slider_CE.on_changed(self.update_plots)
+        self.slider_freq.on_changed(self.update_plots)
+
         
     def calculate_operating_point(self):
         """Calculate DC operating point (Q-point) using voltage divider bias"""
@@ -148,6 +164,145 @@ class CommonEmitterAnalyzer:
             'IB': IB, 'IC': IC, 'IE': IE,
             'VB': VB, 'VC': VC, 'VE': VE, 'VCE': VCE
         }
+    
+    def display_calculations(self, frequency):
+        """Display detailed calculations for the selected frequency"""
+        self.ax_formulas.clear()
+        self.ax_formulas.axis('off')
+        self.ax_formulas.set_title(f'Calculations at {frequency:.1f} Hz', fontweight='bold', fontsize=11)
+        
+        # Calculate all values
+        q_point = self.calculate_operating_point()
+        IE = q_point['IE']
+        
+        # AC emitter resistance
+        re = self.VT / IE if IE > 0 else 1e6
+        
+        # Effective AC collector load
+        if self.RC > 0 and self.RL > 0:
+            Rc_eff = (self.RC * self.RL) / (self.RC + self.RL)
+        else:
+            Rc_eff = self.RC if self.RC > 0 else self.RL
+        
+        # Capacitor impedances
+        Zc_in = 1 / (2 * np.pi * frequency * self.Cin) if frequency > 0 else 1e6
+        Zc_out = 1 / (2 * np.pi * frequency * self.Cout) if frequency > 0 else 1e6
+        Zc_e = 1 / (2 * np.pi * frequency * self.CE) if frequency > 0 else 1e6
+        
+        # Effective emitter impedance
+        if self.RE > 0 and Zc_e > 0:
+            Ze_eff = (self.RE * Zc_e) / np.sqrt(self.RE**2 + Zc_e**2)
+        else:
+            Ze_eff = 0
+        
+        # Input resistance
+        if self.RB1 > 0 and self.RB2 > 0:
+            Rb_parallel = (self.RB1 * self.RB2) / (self.RB1 + self.RB2)
+            Rin_base = self.beta * (re + Ze_eff)
+            Rin = (Rb_parallel * Rin_base) / (Rb_parallel + Rin_base) if (Rb_parallel + Rin_base) > 0 else Rb_parallel
+        else:
+            Rin = 1e6
+            Rb_parallel = 1e6
+            Rin_base = 1e6
+        
+        # Input coupling response
+        if Rin > 0 and frequency > 0:
+            fc_in = 1 / (2 * np.pi * Rin * self.Cin)
+            Cin_response = (frequency / fc_in) / np.sqrt(1 + (frequency / fc_in)**2)
+        else:
+            fc_in = 0
+            Cin_response = 1.0
+        
+        # Voltage gain
+        if (re + Ze_eff) > 0:
+            Av_mag_base = Rc_eff / (re + Ze_eff)
+        else:
+            Av_mag_base = 0
+        Av_mag = Av_mag_base * Cin_response
+        Av_dB = 20 * np.log10(Av_mag) if Av_mag > 1e-10 else -100
+        
+        # Current gain
+        Rs = 50
+        if self.RB1 > 0 and self.RB2 > 0:
+            current_division = Rin_base / (Rb_parallel + Rin_base) if (Rb_parallel + Rin_base) > 0 else 1.0
+        else:
+            current_division = 1.0
+        
+        if self.RC > 0 and self.RL > 0:
+            output_division = self.RC / (self.RC + self.RL)
+        else:
+            output_division = 1.0
+        
+        Ai_mag = self.beta * current_division * output_division * Cin_response
+        Ai_dB = 20 * np.log10(Ai_mag) if Ai_mag > 1e-10 else -100
+        
+        # Power gain
+        Ap_mag = Av_mag * Ai_mag
+        Ap_dB = 10 * np.log10(Ap_mag) if Ap_mag > 1e-10 else -100
+        
+        # Format the text display
+        text_lines = []
+        text_lines.append("═══ Q-POINT (DC) ═══")
+        text_lines.append(f"IC = {IE*1e3:.3f} mA")
+        text_lines.append(f"VCE = {q_point['VCE']:.2f} V")
+        text_lines.append(f"IB = {q_point['IB']*1e6:.2f} μA")
+        text_lines.append("")
+        
+        text_lines.append("═══ AC PARAMETERS ═══")
+        text_lines.append(f"re = VT/IE = {re:.2f} Ω")
+        text_lines.append(f"Rc_eff = RC||RL = {Rc_eff:.1f} Ω")
+        text_lines.append(f"Rb_par = RB1||RB2 = {Rb_parallel/1e3:.2f} kΩ")
+        text_lines.append("")
+        
+        text_lines.append("═══ CAPACITOR IMPEDANCES ═══")
+        text_lines.append(f"Zc_in = {Zc_in:.2f} Ω")
+        text_lines.append(f"Zc_out = {Zc_out:.2f} Ω")
+        text_lines.append(f"Zc_e = {Zc_e:.2f} Ω")
+        text_lines.append(f"Ze_eff = RE||CE = {Ze_eff:.2f} Ω")
+        text_lines.append("")
+        
+        text_lines.append("═══ INPUT CIRCUIT ═══")
+        text_lines.append(f"Rin_base = β(re+Ze) = {Rin_base:.1f} Ω")
+        text_lines.append(f"Rin = Rb||Rin_base = {Rin:.1f} Ω")
+        text_lines.append(f"fc_in = {fc_in:.2f} Hz")
+        text_lines.append(f"Cin_resp = {Cin_response:.4f}")
+        text_lines.append("")
+        
+        text_lines.append("═══ VOLTAGE GAIN ═══")
+        text_lines.append(f"Av_base = Rc_eff/(re+Ze)")
+        text_lines.append(f"       = {Rc_eff:.1f}/{(re+Ze_eff):.2f}")
+        text_lines.append(f"       = {Av_mag_base:.2f}")
+        text_lines.append(f"Av = Av_base × Cin_resp")
+        text_lines.append(f"   = {Av_mag_base:.2f} × {Cin_response:.4f}")
+        text_lines.append(f"   = {Av_mag:.2f}")
+        text_lines.append(f"Av_dB = 20log({Av_mag:.2f})")
+        text_lines.append(f"      = {Av_dB:.2f} dB")
+        text_lines.append("")
+        
+        text_lines.append("═══ CURRENT GAIN ═══")
+        text_lines.append(f"curr_div = {current_division:.4f}")
+        text_lines.append(f"out_div = {output_division:.4f}")
+        text_lines.append(f"Ai = β × curr × out × Cin")
+        text_lines.append(f"   = {self.beta} × {current_division:.3f}")
+        text_lines.append(f"     × {output_division:.3f} × {Cin_response:.3f}")
+        text_lines.append(f"   = {Ai_mag:.2f}")
+        text_lines.append(f"Ai_dB = {Ai_dB:.2f} dB")
+        text_lines.append("")
+        
+        text_lines.append("═══ POWER GAIN ═══")
+        text_lines.append(f"Ap = Av × Ai")
+        text_lines.append(f"   = {Av_mag:.2f} × {Ai_mag:.2f}")
+        text_lines.append(f"   = {Ap_mag:.2f}")
+        text_lines.append(f"Ap_dB = 10log({Ap_mag:.2f})")
+        text_lines.append(f"      = {Ap_dB:.2f} dB")
+        
+        # Display the text
+        text_str = '\n'.join(text_lines)
+        self.ax_formulas.text(0.05, 0.98, text_str, 
+                             transform=self.ax_formulas.transAxes,
+                             fontsize=8, verticalalignment='top',
+                             family='monospace',
+                             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
     
     def calculate_gains(self, frequency):
         """Calculate voltage, current, and power gains at given frequency"""
@@ -427,8 +582,14 @@ class CommonEmitterAnalyzer:
         self.Cout = self.slider_Cout.val * 1e-6
         self.CE = self.slider_CE.val * 1e-6
         
+        # Get selected frequency from slider (logarithmic scale)
+        self.selected_freq = 10 ** self.slider_freq.val
+        
         # Redraw circuit
         self.draw_circuit()
+        
+        # Display calculations for selected frequency
+        self.display_calculations(self.selected_freq)
         
         # Calculate gains over frequency range
         frequencies = np.logspace(0, 6, 500)  # 1 Hz to 1 MHz
@@ -442,29 +603,38 @@ class CommonEmitterAnalyzer:
             Ai_dB.append(ai)
             Ap_dB.append(ap)
         
+        # Calculate gain at selected frequency for marker
+        av_sel, ai_sel, ap_sel = self.calculate_gains(self.selected_freq)
+        
         # Update voltage gain plot
         self.ax_voltage.clear()
-        self.ax_voltage.semilogx(frequencies, Av_dB, 'b-', linewidth=2)
+        self.ax_voltage.semilogx(frequencies, Av_dB, 'b-', linewidth=2, label='Voltage Gain')
+        self.ax_voltage.plot(self.selected_freq, av_sel, 'ro', markersize=8, label=f'Selected: {av_sel:.1f} dB @ {self.selected_freq:.1f} Hz')
         self.ax_voltage.set_title('Voltage Gain vs Frequency', fontweight='bold')
         self.ax_voltage.set_xlabel('Frequency (Hz)')
         self.ax_voltage.set_ylabel('Voltage Gain (dB)')
         self.ax_voltage.grid(True, alpha=0.3, which='both')
+        self.ax_voltage.legend(fontsize=8, loc='lower right')
         
         # Update current gain plot
         self.ax_current.clear()
-        self.ax_current.semilogx(frequencies, Ai_dB, 'g-', linewidth=2)
+        self.ax_current.semilogx(frequencies, Ai_dB, 'g-', linewidth=2, label='Current Gain')
+        self.ax_current.plot(self.selected_freq, ai_sel, 'ro', markersize=8, label=f'Selected: {ai_sel:.1f} dB @ {self.selected_freq:.1f} Hz')
         self.ax_current.set_title('Current Gain vs Frequency', fontweight='bold')
         self.ax_current.set_xlabel('Frequency (Hz)')
         self.ax_current.set_ylabel('Current Gain (dB)')
         self.ax_current.grid(True, alpha=0.3, which='both')
+        self.ax_current.legend(fontsize=8, loc='upper right')
         
         # Update power gain plot
         self.ax_power.clear()
-        self.ax_power.semilogx(frequencies, Ap_dB, 'r-', linewidth=2)
+        self.ax_power.semilogx(frequencies, Ap_dB, 'r-', linewidth=2, label='Power Gain')
+        self.ax_power.plot(self.selected_freq, ap_sel, 'ko', markersize=8, label=f'Selected: {ap_sel:.1f} dB @ {self.selected_freq:.1f} Hz')
         self.ax_power.set_title('Power Gain vs Frequency', fontweight='bold')
         self.ax_power.set_xlabel('Frequency (Hz)')
         self.ax_power.set_ylabel('Power Gain (dB)')
         self.ax_power.grid(True, alpha=0.3, which='both')
+        self.ax_power.legend(fontsize=8, loc='lower right')
         
         # Redraw canvas
         self.fig.canvas.draw_idle()

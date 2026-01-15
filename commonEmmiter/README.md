@@ -75,7 +75,135 @@ The load resistor (RL) in parallel with the collector resistor (RC) reduces the 
 - Increases output current capability
 - Affects the overall power transfer
 
-## Circuit Equations
+## Gain Calculations - Detailed Explanation
+
+The analyzer calculates three types of gain at each frequency: voltage gain, current gain, and power gain. Here's how each is computed step-by-step.
+
+### Step 1: DC Operating Point (Q-Point)
+
+First, we calculate the DC bias point using voltage divider biasing:
+
+```
+VB = VCC × RB2 / (RB1 + RB2)          # Base voltage from divider
+VE = VB - VBE                          # Emitter voltage (VBE ≈ 0.7V)
+IE = VE / RE                           # Emitter current
+IC ≈ IE                                # Collector current (for high β)
+IB = IC / β                            # Base current
+VC = VCC - IC × RC                     # Collector voltage
+VCE = VC - VE                          # Collector-emitter voltage
+```
+
+### Step 2: AC Small-Signal Parameters
+
+These are frequency-independent AC parameters:
+
+```
+re = VT / IE                           # AC emitter resistance (VT = 26mV)
+Rc_eff = RC || RL                      # Effective collector load (parallel)
+       = (RC × RL) / (RC + RL)
+Rb_parallel = RB1 || RB2               # Bias network equivalent
+```
+
+### Step 3: Frequency-Dependent Impedances
+
+At each frequency `f`, capacitors have impedance:
+
+```
+Zc_in = 1 / (2π × f × Cin)            # Input coupling capacitor
+Zc_out = 1 / (2π × f × Cout)          # Output coupling capacitor  
+Zc_e = 1 / (2π × f × CE)              # Emitter bypass capacitor
+```
+
+**Effective emitter impedance** (RE in parallel with CE):
+```
+Ze_eff = (RE × Zc_e) / √(RE² + Zc_e²)
+```
+
+At low frequencies: Zc_e is large → Ze_eff ≈ RE (low gain)
+At high frequencies: Zc_e is small → Ze_eff ≈ 0 (high gain)
+
+### Step 4: Input Circuit Analysis
+
+```
+Rin_base = β × (re + Ze_eff)          # Resistance looking into base
+Rin = Rb_parallel || Rin_base         # Total input resistance
+fc_in = 1 / (2π × Rin × Cin)          # Input cutoff frequency
+```
+
+**Input Coupling Capacitor Response:**
+```
+Cin_response = (f / fc_in) / √(1 + (f / fc_in)²)
+```
+
+This is a critical factor that affects BOTH voltage and current gain:
+- At f << fc_in: Cin_response ≈ 0 (signal blocked)
+- At f = fc_in: Cin_response ≈ 0.707 (-3dB point)
+- At f >> fc_in: Cin_response ≈ 1 (signal passes fully)
+
+**Why it affects both gains:** The coupling capacitor forms a high-pass filter that attenuates both the input voltage AND input current at low frequencies. Think of it as a frequency-dependent valve that restricts both "pressure" (voltage) and "flow" (current) equally.
+
+### Step 5: Voltage Gain Calculation
+
+```
+Av_base = Rc_eff / (re + Ze_eff)      # Base voltage gain (mid-band)
+Av = Av_base × Cin_response            # Apply coupling capacitor effect
+Av_dB = 20 × log₁₀(Av)                # Convert to decibels
+```
+
+**Physical meaning:**
+- Larger Rc_eff → higher gain (more voltage drop across collector)
+- Smaller (re + Ze_eff) → higher gain (less emitter degeneration)
+- Cin_response reduces gain at low frequencies
+
+### Step 6: Current Gain Calculation
+
+```
+current_division = Rin_base / (Rb_parallel + Rin_base)
+output_division = RC / (RC + RL)
+Ai = β × current_division × output_division × Cin_response
+Ai_dB = 20 × log₁₀(Ai)
+```
+
+**Breaking it down:**
+- **β**: Transistor's intrinsic current gain
+- **current_division**: Input current splits between bias resistors and base
+  - More goes to base when Rin_base is large (high Ze_eff)
+- **output_division**: Collector current splits between RC and RL
+  - More goes to load when RL is large
+- **Cin_response**: Same factor as voltage gain - reduces current at low frequencies
+
+**Why Cin_response affects current gain:** At low frequencies, the coupling capacitor has high impedance (Zc_in = 1/(2πfC) is large), which blocks current flow just as it blocks voltage. Both the input voltage and input current are attenuated by the same factor.
+
+### Step 7: Power Gain Calculation
+
+```
+Ap = Av × Ai                           # Power gain (linear domain)
+Ap_dB = 10 × log₁₀(Ap)                # Convert to decibels
+```
+
+Note: Power gain uses 10× (not 20×) because power is proportional to voltage squared.
+
+### Frequency Response Summary
+
+| Frequency Range | Cin_response | Ze_eff | Voltage Gain | Current Gain |
+|----------------|--------------|---------|--------------|--------------|
+| Very Low (< fc_in) | ~0 | ~RE | Very Low | Moderate |
+| Low (≈ fc_in) | ~0.7 | Decreasing | Increasing | Decreasing |
+| Mid-band | ~1 | ~0 | Maximum | Lower |
+| High | ~1 | ~0 | Maximum | Lower |
+
+**Key insights:**
+1. **Voltage gain** increases with frequency (until mid-band) due to:
+   - Cin_response increasing (coupling capacitor passes signal)
+   - Ze_eff decreasing (bypass capacitor shorts RE)
+
+2. **Current gain** peaks at low-to-mid frequencies because:
+   - Increases with Cin_response (coupling effect)
+   - Decreases as Ze_eff drops (lower input impedance → more current shunted by bias resistors)
+
+3. **Power gain** is the product of both, typically maximizing in the mid-band region
+
+## Circuit Equations Reference
 
 ### DC Analysis (Q-Point)
 ```
@@ -96,6 +224,17 @@ Av ≈ -Rc_eff / (re + Ze_eff)
 ```
 
 Where `Ze_eff` is the effective emitter impedance (RE bypassed by CE at high frequencies).
+
+## Example Calculations
+
+For detailed step-by-step calculations at specific frequencies (1 Hz, 10 Hz, 100 Hz, 1 kHz, 10 kHz) using the default circuit values, see [gain_calculations_example.md](gain_calculations_example.md).
+
+This document shows:
+- All intermediate values
+- Numerical results at each step
+- How gains vary across the frequency spectrum
+- Why the frequency response has its characteristic shape
+
 
 ## Learning Objectives
 
